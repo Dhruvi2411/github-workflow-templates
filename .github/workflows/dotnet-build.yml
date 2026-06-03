@@ -1,0 +1,76 @@
+name: Reusable Dotnet Build
+
+on:
+  workflow_call:
+    inputs:
+      dotnet-version:
+        required: true
+        type: string
+
+      artifact-name:
+        required: true
+        type: string
+
+      output-dir:
+        required: false
+        type: string
+        default: publish
+
+    outputs:
+      version:
+        value: ${{ jobs.build.outputs.version }}
+
+jobs:
+  build:
+    runs-on: self-hosted
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+
+      - name: Restore
+        run: dotnet restore eShopOnWeb.sln
+
+      - name: Build
+        run: |
+          dotnet build eShopOnWeb.sln \
+          --configuration Release \
+          --no-restore
+
+      - name: Generate Version
+        id: version
+        run: |
+          VERSION="1.0.${GITHUB_RUN_NUMBER}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Test
+        run: |
+          dotnet test eShopOnWeb.sln \
+          --configuration Release \
+          --no-build
+
+      - name: Publish
+        run: |
+          dotnet publish src/Web/Web.csproj \
+          --configuration Release \
+          --output ${{ inputs.output-dir }}
+
+      - name: Package
+        run: |
+          tar -czf \
+          ${{ inputs.artifact-name }}-${{ steps.version.outputs.version }}.tar.gz \
+          -C ${{ inputs.output-dir }} .
+
+      - name: Upload Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: |
+            *.tar.gz
+          retention-days: 5

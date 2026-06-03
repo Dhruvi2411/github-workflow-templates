@@ -1,0 +1,50 @@
+name: Reusable JFrog Upload
+
+on:
+  workflow_call:
+    inputs:
+      artifact-name:
+        required: true
+        type: string
+
+      version:
+        required: true
+        type: string
+
+    secrets:
+      JF_URL:
+        required: true
+
+      JF_ACCESS_TOKEN:
+        required: true
+
+jobs:
+  upload:
+    runs-on: self-hosted
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+
+      - name: Setup JFrog
+        uses: jfrog/setup-jfrog-cli@v4
+        env:
+          JF_URL: ${{ secrets.JF_URL }}
+          JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
+
+      - name: Upload Package
+        run: |
+          jf rt upload \
+          "*.tar.gz" \
+          "generic-local/master/${{ inputs.version }}/"
+
+      - name: Publish Build Info
+        run: |
+          jf rt build-collect-env \
+          "${{ inputs.artifact-name }}" \
+          "${{ github.run_number }}"
+
+          jf rt build-publish \
+          "${{ inputs.artifact-name }}" \
+          "${{ github.run_number }}"
