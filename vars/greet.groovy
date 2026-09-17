@@ -1,3 +1,3 @@
-def greet(String name){
-    echo "Good morning ${name}..!!"
+def greet(){
+    echo "Good morning..!!"
 }
