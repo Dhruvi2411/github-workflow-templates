@@ -2,6 +2,6 @@ def call(){
     echo "Good morning..!!  "
 }
 
-def greet(String name) {
+def hello(String name) {
     eccho "Hello ${name}..!!"
 }
