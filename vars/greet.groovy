@@ -1,7 +1,7 @@
-def call(){
-    echo "Good morning..!!  "
-}
+    def call(){
+        echo "Good morning..!!  "
+    }
 
-def hello(String name) {
-    eccho "Hello ${name}..!!"
-}
+    def hello(String name) {
+        echo "Hello ${name}..!!"
+    }
