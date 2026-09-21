@@ -1,4 +1,4 @@
-    def call(){
+    def call(String name){
         echo "Good morning..!!  "
         hello(name)
     }
