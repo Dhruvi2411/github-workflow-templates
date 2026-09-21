@@ -4,5 +4,7 @@ def call(String imagename) {
 
     def t1 = new TestUtils()
 
-    t1.buildImage(imagename)
+    def ans = t1.buildImage(imagename)
+
+    echo ans
 }
