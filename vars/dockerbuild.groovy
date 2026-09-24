@@ -1,4 +1,4 @@
-import com.company.devops.Buildimage
+import com.company.docker.Buildimage
 
 def call(String imageName) {
 
