@@ -1,0 +1,26 @@
+pipeline{
+    agent any
+
+    stages {
+        stage("Without docker") {
+            steps {
+                echo "Without docker"
+            }
+        }
+
+        stage("With docker") {
+            agent {
+                docker {
+                    image 'node:18-alpine'
+                    reuseNode true
+                    aegs '-u root"root'
+                     
+                }
+            }
+            steps {
+                sh 'echo "With docker"'
+                sh 'node --version'
+            }
+        }
+    }
+}
