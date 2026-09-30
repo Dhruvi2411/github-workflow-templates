@@ -1,3 +1,3 @@
 def call() {
-    echo "This is dev branch for deploying....."
+    echo "This is master branch for deploying....."
 }
