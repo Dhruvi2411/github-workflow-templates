@@ -65,5 +65,27 @@ pipeline {
                 '''
             }
         }
+
+        stage('Validate Kubernetes YAML') {
+            steps {
+                sh '''
+                    set -e
+
+                    echo "Validating Blue Deployment..."
+                    kubectl apply --dry-run=server \
+                        -f blue-green-k8s/blue-deployment.yaml
+
+                    echo "Validating Green Deployment..."
+                    kubectl apply --dry-run=server \
+                        -f blue-green-k8s/green-deployment.yaml
+
+                    echo "Validating Kubernetes Service..."
+                    kubectl apply --dry-run=server \
+                        -f blue-green-k8s/service.yaml
+
+                    echo "All Kubernetes YAML files validated successfully!"
+                '''
+            }
+        }
     }
 }
