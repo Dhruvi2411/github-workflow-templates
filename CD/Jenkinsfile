@@ -148,7 +148,7 @@ pipeline {
                 '''
             }
         }
-        
+
         stage('Switch Traffic to Green') {
             steps {
                 sh '''
@@ -169,5 +169,30 @@ pipeline {
                 '''
             }
         }
+
+        stage('Rollback to Blue') {
+            steps {
+                sh '''
+                    set -e
+
+                    echo "Rolling back shopping-service traffic to Blue..."
+
+                    kubectl patch service shopping-service \
+                    -p '{"spec":{"selector":{"app":"shopping","environment":"blue"}}}'
+
+                    echo "Checking Service selector..."
+                    kubectl get service shopping-service -o yaml
+
+                    echo "Checking Blue endpoints..."
+                    kubectl get endpoints shopping-service
+
+                    echo "Testing Blue Nginx response..."
+                    curl -fsS "http://$(minikube ip):30080/" -o /dev/null
+
+                    echo "SUCCESS: Rollback to Blue completed!"
+                '''
+            }
+        }
+
     }
 }
