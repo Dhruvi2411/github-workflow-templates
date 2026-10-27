@@ -94,20 +94,16 @@ pipeline {
                     set -e
 
                     echo "Deploying Green Nginx version..."
-
-                    kubectl apply \
-                        -f blue-green-k8s/green-deployment.yaml
+                    kubectl apply -f blue-green-k8s/green-deployment.yaml
 
                     echo "Waiting for Green Deployment rollout..."
-
-                    kubectl rollout status \
-                        -f blue-green-k8s/green-deployment.yaml \
-                        --timeout=120s
+                    kubectl rollout status deployment/green-deployment --timeout=120s
 
                     echo "Checking Green Deployment..."
+                    kubectl get deployment green-deployment
 
-                    kubectl get deployment \
-                        -f blue-green-k8s/green-deployment.yaml
+                    echo "Checking Green Pods..."
+                    kubectl get pods -l version=green
 
                     echo "Green deployment completed successfully!"
                 '''
