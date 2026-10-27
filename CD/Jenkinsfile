@@ -18,5 +18,20 @@ pipeline {
                 '''
             }
         }
+        
+        stage('Verify GitHub Checkout') {
+            steps {
+                sh '''
+                    echo "Current directory:"
+                    pwd
+
+                    echo "Repository files:"
+                    ls -la
+
+                    echo "Kubernetes YAML files:"
+                    ls -la blue-green-k8s/
+                '''
+            }
+        }
     }
 }
