@@ -4,6 +4,26 @@ pipeline {
     }
 
     stages {
+        stage('Check Kubernetes Cluster') {
+            steps {
+                sh '''
+                    echo "Checking kubectl configuration..."
+                    kubectl config current-context
+
+                    echo "Checking Kubernetes cluster connectivity..."
+                    kubectl cluster-info
+
+                    echo "Checking Kubernetes nodes..."
+                    kubectl get nodes
+
+                    echo "Checking whether all nodes are Ready..."
+                    kubectl wait --for=condition=Ready nodes --all --timeout=60s
+
+                    echo "Kubernetes cluster is accessible and nodes are Ready."
+                '''
+            }
+        }
+        
         stage('Check Kubernetes Connection') {
             steps {
                 sh '''
@@ -18,7 +38,7 @@ pipeline {
                 '''
             }
         }
-        
+
         stage('Verify GitHub Checkout') {
             steps {
                 sh '''
