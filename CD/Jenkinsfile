@@ -109,5 +109,46 @@ pipeline {
                 '''
             }
         }
+
+        stage('Verify Green Health') {
+            steps {
+                sh '''
+                    set -e
+
+                    echo "Checking Green Deployment readiness..."
+
+                    kubectl rollout status deployment/green-deployment \
+                        --timeout=120s
+
+                    echo "Finding Green Pod..."
+
+                    GREEN_POD=$(kubectl get pods \
+                        -l version=green \
+                        -o jsonpath='{.items[0].metadata.name}')
+
+                    if [ -z "$GREEN_POD" ]; then
+                        echo "ERROR: No Green Pod found!"
+                        exit 1
+                    fi
+
+                    echo "Green Pod: $GREEN_POD"
+
+                    echo "Checking Pod status..."
+
+                    kubectl wait \
+                        --for=condition=Ready \
+                        pod/"$GREEN_POD" \
+                        --timeout=60s
+
+                    echo "Testing Nginx HTTP response..."
+
+                    kubectl exec "$GREEN_POD" -- \
+                        sh -c 'wget -q -O /dev/null http://127.0.0.1/'
+
+                    echo "SUCCESS: Green Nginx is healthy!"
+                '''
+            }
+        }
+
     }
 }
