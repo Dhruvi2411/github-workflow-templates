@@ -1,0 +1,22 @@
+pipeline {
+    agent {
+        label 'dhruvi-agent'
+    }
+
+    stages {
+        stage('Check Kubernetes Connection') {
+            steps {
+                sh '''
+                    echo "Checking kubectl..."
+                    kubectl version --client
+
+                    echo "Checking Minikube nodes..."
+                    kubectl get nodes
+
+                    echo "Checking deployments..."
+                    kubectl get deployments
+                '''
+            }
+        }
+    }
+}
