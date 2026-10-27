@@ -139,7 +139,7 @@ pipeline {
                         --for=condition=Ready \
                         pod/"$GREEN_POD" \
                         --timeout=60s
-                        
+
                     echo "Testing Nginx HTTP response..."
 
                     curl -fsS "http://$(minikube ip):30080/" -o /dev/null
@@ -148,6 +148,26 @@ pipeline {
                 '''
             }
         }
+        
+        stage('Switch Traffic to Green') {
+            steps {
+                sh '''
+                    set -e
 
+                    echo "Switching shopping-service traffic to Green..."
+
+                    kubectl patch service shopping-service \
+                    -p '{"spec":{"selector":{"app":"shopping","environment":"green"}}}'
+
+                    echo "Checking Service selector..."
+                    kubectl get service shopping-service -o yaml
+
+                    echo "Checking Green endpoints..."
+                    kubectl get endpoints shopping-service
+
+                    echo "Traffic switch to Green completed!"
+                '''
+            }
+        }
     }
 }
