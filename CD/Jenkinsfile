@@ -7,23 +7,35 @@ pipeline {
         stage('Check Kubernetes Cluster') {
             steps {
                 sh '''
-                    echo "Checking kubectl configuration..."
-                    kubectl config current-context
+                    set -e
 
-                    echo "Checking Kubernetes cluster connectivity..."
+                    echo "Checking Minikube status..."
+
+                    if ! minikube status; then
+                        echo "Minikube is not running. Starting Minikube..."
+                        minikube start --driver=docker
+                    fi
+
+                    echo "Updating Kubernetes context..."
+                    minikube update-context
+
+                    echo "Setting Kubernetes context..."
+                    kubectl config use-context minikube
+
+                    echo "Checking Kubernetes connectivity..."
                     kubectl cluster-info
 
                     echo "Checking Kubernetes nodes..."
                     kubectl get nodes
 
-                    echo "Checking whether all nodes are Ready..."
-                    kubectl wait --for=condition=Ready nodes --all --timeout=60s
+                    echo "Waiting for Kubernetes nodes to be Ready..."
+                    kubectl wait --for=condition=Ready nodes --all --timeout=120s
 
-                    echo "Kubernetes cluster is accessible and nodes are Ready."
+                    echo "Minikube cluster is ready!"
                 '''
             }
         }
-        
+
         stage('Check Kubernetes Connection') {
             steps {
                 sh '''
