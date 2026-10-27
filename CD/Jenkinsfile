@@ -139,11 +139,10 @@ pipeline {
                         --for=condition=Ready \
                         pod/"$GREEN_POD" \
                         --timeout=60s
-
+                        
                     echo "Testing Nginx HTTP response..."
 
-                    kubectl exec "$GREEN_POD" -- \
-                        sh -c 'wget -q -O /dev/null http://127.0.0.1/'
+                    curl -fsS "http://$(minikube ip):30080/" -o /dev/null
 
                     echo "SUCCESS: Green Nginx is healthy!"
                 '''
