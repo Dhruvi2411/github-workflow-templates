@@ -194,5 +194,35 @@ pipeline {
             }
         }
 
+        stage('Final Deployment Verification') {
+            steps {
+                sh '''
+                    set -e
+
+                    echo "Checking Blue Deployment..."
+                    kubectl rollout status deployment/blue-deployment --timeout=120s
+
+                    echo "Checking Green Deployment..."
+                    kubectl rollout status deployment/green-deployment --timeout=120s
+
+                    echo "Checking all shopping Pods..."
+                    kubectl get pods -l app=shopping -o wide
+
+                    echo "Checking Service selector..."
+                    kubectl get service shopping-service \
+                    -o jsonpath='{.spec.selector}'
+                    echo ""
+
+                    echo "Checking Service endpoints..."
+                    kubectl get endpoints shopping-service
+
+                    echo "Testing application response..."
+                    curl -fsS "http://$(minikube ip):30080/" -o /dev/null
+
+                    echo "SUCCESS: Final deployment verification completed!"
+                '''
+            }
+        }
+
     }
 }
