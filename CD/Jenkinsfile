@@ -262,7 +262,7 @@ pipeline {
                                     if curl -fsS \
                                         --connect-timeout 2 \
                                         --max-time 5 \
-                                        "http://$(minikube ip):30080/" \
+                                        "http://$(minikube ip):30081/" \
                                         -o /dev/null; then
 
                                         HEALTHY=true
