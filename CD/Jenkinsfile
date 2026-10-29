@@ -182,9 +182,7 @@ pipeline {
 
                             echo "Switching traffic to ${target}..."
 
-                            kubectl patch service shopping-service \
-                            --type=merge \
-                            -p '{"spec":{"selector":{"app":"shopping","environment":"${target}"}}}'
+                            kubectl patch service shopping-service --type=merge -p '{"spec":{"selector":{"app":"shopping","environment":"${target}"}}}'
 
                             echo "Checking Service endpoints..."
                             kubectl get endpoints shopping-service
