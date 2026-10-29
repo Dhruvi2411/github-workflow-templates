@@ -1,0 +1,228 @@
+pipeline {
+    agent {
+        label 'dhruvi-agent'
+    }
+
+    stages {
+        stage('Check Kubernetes Cluster') {
+            steps {
+                sh '''
+                    set -e
+
+                    echo "Checking Minikube status..."
+
+                    if ! minikube status; then
+                        echo "Minikube is not running. Starting Minikube..."
+                        minikube start --driver=docker
+                    fi
+
+                    echo "Updating Kubernetes context..."
+                    minikube update-context
+
+                    echo "Setting Kubernetes context..."
+                    kubectl config use-context minikube
+
+                    echo "Checking Kubernetes connectivity..."
+                    kubectl cluster-info
+
+                    echo "Checking Kubernetes nodes..."
+                    kubectl get nodes --all-namespaces
+
+                    echo "Waiting for Kubernetes nodes to be Ready..."
+                    kubectl wait --for=condition=Ready nodes --all --timeout=120s
+
+                    echo "Minikube cluster is ready!"
+                '''
+            }
+        }
+
+        stage('Check Kubernetes Connection') {
+            steps {
+                sh '''
+                    echo "Checking kubectl..."
+                    kubectl version --client
+
+                    echo "Checking Minikube nodes..."
+                    kubectl get pods --all-namespaces
+
+                    echo "Checking deployments..."
+                    kubectl get deployments
+                '''
+            }
+        }
+
+        stage('Verify GitHub Checkout') {
+            steps {
+                sh '''
+                    echo "Current directory:"
+                    pwd
+
+                    echo "Repository files:"
+                    ls -la
+
+                    echo "Kubernetes YAML files:"
+                    ls -la blue-green-k8s/
+                '''
+            }
+        }
+
+        stage('Validate Kubernetes YAML') {
+            steps {
+                sh '''
+                    set -e
+
+                    echo "Validating Blue Deployment..."
+                    kubectl apply --dry-run=server \
+                        -f blue-green-k8s/blue-deployment.yaml
+
+                    echo "Validating Green Deployment..."
+                    kubectl apply --dry-run=server \
+                        -f blue-green-k8s/green-deployment.yaml
+
+                    echo "Validating Kubernetes Service..."
+                    kubectl apply --dry-run=server \
+                        -f blue-green-k8s/service.yaml
+
+                    echo "All Kubernetes YAML files validated successfully!"
+                '''
+            }
+        }
+
+        stage('Deploy Green Version') {
+            steps {
+                sh '''
+                    set -e
+
+                    echo "Deploying Green Nginx version..."
+                    kubectl apply -f blue-green-k8s/green-deployment.yaml
+
+                    echo "Waiting for Green Deployment rollout..."
+                    kubectl rollout status deployment/green-deployment --timeout=120s
+
+                    echo "Checking Green Deployment..."
+                    kubectl get deployment green-deployment
+
+                    echo "Checking Green Pods..."
+                    kubectl get pods -l version=green
+
+                    echo "Green deployment completed successfully!"
+                '''
+            }
+        }
+
+        stage('Verify Green Health') {
+            steps {
+                sh '''
+                    set -e
+
+                    echo "Checking Green Deployment readiness..."
+
+                    kubectl rollout status deployment/green-deployment \
+                        --timeout=120s
+
+                    echo "Finding Green Pod..."
+
+                    GREEN_POD=$(kubectl get pods \
+                        -l environment=green \
+                        -o jsonpath='{.items[0].metadata.name}')
+
+                    if [ -z "$GREEN_POD" ]; then
+                        echo "ERROR: No Green Pod found!"
+                        exit 1
+                    fi
+
+                    echo "Green Pod: $GREEN_POD"
+
+                    echo "Checking Pod status..."
+
+                    kubectl wait \
+                        --for=condition=Ready \
+                        pod/"$GREEN_POD" \
+                        --timeout=60s
+
+                    echo "Testing Nginx HTTP response..."
+
+                    curl -fsS "http://$(minikube ip):30080/" -o /dev/null
+
+                    echo "SUCCESS: Green Nginx is healthy!"
+                '''
+            }
+        }
+
+        stage('Switch Traffic to Green') {
+            steps {
+                sh '''
+                    set -e
+
+                    echo "Switching shopping-service traffic to Green..."
+
+                    kubectl patch service shopping-service \
+                    -p '{"spec":{"selector":{"app":"shopping","environment":"green"}}}'
+
+                    echo "Checking Service selector..."
+                    kubectl get service shopping-service -o yaml
+
+                    echo "Checking Green endpoints..."
+                    kubectl get endpoints shopping-service
+
+                    echo "Traffic switch to Green completed!"
+                '''
+            }
+        }
+
+        stage('Rollback to Blue') {
+            steps {
+                sh '''
+                    set -e
+
+                    echo "Rolling back shopping-service traffic to Blue..."
+
+                    kubectl patch service shopping-service \
+                    -p '{"spec":{"selector":{"app":"shopping","environment":"blue"}}}'
+
+                    echo "Checking Service selector..."
+                    kubectl get service shopping-service -o yaml
+
+                    echo "Checking Blue endpoints..."
+                    kubectl get endpoints shopping-service
+
+                    echo "Testing Blue Nginx response..."
+                    curl -fsS "http://$(minikube ip):30080/" -o /dev/null
+
+                    echo "SUCCESS: Rollback to Blue completed!"
+                '''
+            }
+        }
+
+        stage('Final Deployment Verification') {
+            steps {
+                sh '''
+                    set -e
+
+                    echo "Checking Blue Deployment..."
+                    kubectl rollout status deployment/blue-deployment --timeout=120s
+
+                    echo "Checking Green Deployment..."
+                    kubectl rollout status deployment/green-deployment --timeout=120s
+
+                    echo "Checking all shopping Pods..."
+                    kubectl get pods -l app=shopping -o wide
+
+                    echo "Checking Service selector..."
+                    kubectl get service shopping-service \
+                    -o jsonpath='{.spec.selector}'
+                    echo ""
+
+                    echo "Checking Service endpoints..."
+                    kubectl get endpoints shopping-service
+
+                    echo "Testing application response..."
+                    curl -fsS "http://$(minikube ip):30080/" -o /dev/null
+
+                    echo "SUCCESS: Final deployment verification completed!"
+                '''
+            }
+        }
+    
+    }
+}   
