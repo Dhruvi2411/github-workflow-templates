@@ -177,47 +177,51 @@ pipeline {
                     def target = env.TARGET_ENV
 
                     try {
-                        sh '''
-                            set -e
+                        withEnv(["PATCH_ENV=${target}"]) {
+                            sh '''
+                                set -e
 
-                            echo "Switching traffic to $TARGET_ENV..."
+                                echo "Switching traffic to $PATCH_ENV..."
 
-                            kubectl patch service shopping-service \
-                                --type=merge \
-                                -p "{\"spec\":{\"selector\":{\"app\":\"shopping\",\"environment\":\"$TARGET_ENV\"}}}"
+                                kubectl patch service shopping-service \
+                                    --type=merge \
+                                    -p '{"spec":{"selector":{"app":"shopping","environment":"'"$PATCH_ENV"'"}}}'
 
-                            echo "Checking Service selector..."
-                            kubectl get service shopping-service \
-                                -o jsonpath='{.spec.selector}'
-                            echo ""
+                                echo "Checking Service selector..."
+                                kubectl get service shopping-service \
+                                    -o jsonpath='{.spec.selector}'
+                                echo ""
 
-                            echo "Checking Service endpoints..."
-                            kubectl get endpoints shopping-service
+                                echo "Checking Service endpoints..."
+                                kubectl get endpoints shopping-service
 
-                            echo "Testing live application traffic..."
-                            curl -fsS "http://$(minikube ip):30080/" -o /dev/null
+                                echo "Testing live application traffic..."
+                                curl -fsS "http://$(minikube ip):30080/" -o /dev/null
 
-                            echo "SUCCESS: $TARGET_ENV is now active!"
-                        '''
+                                echo "SUCCESS: $PATCH_ENV is now active!"
+                            '''
+                        }
                     } catch (err) {
                         echo "Traffic verification failed. Restoring ${previous}..."
 
-                        sh '''
-                            set -e
+                        withEnv(["PATCH_ENV=${previous}"]) {
+                            sh '''
+                                set -e
 
-                            echo "Rolling back to $ACTIVE_ENV..."
+                                echo "Rolling back to $PATCH_ENV..."
 
-                            kubectl patch service shopping-service \
-                                --type=merge \
-                                -p "{\"spec\":{\"selector\":{\"app\":\"shopping\",\"environment\":\"$ACTIVE_ENV\"}}}"
+                                kubectl patch service shopping-service \
+                                    --type=merge \
+                                    -p '{"spec":{"selector":{"app":"shopping","environment":"'"$PATCH_ENV"'"}}}'
 
-                            echo "Checking Service after rollback..."
-                            kubectl get service shopping-service \
-                                -o jsonpath='{.spec.selector}'
-                            echo ""
+                                echo "Checking Service after rollback..."
+                                kubectl get service shopping-service \
+                                    -o jsonpath='{.spec.selector}'
+                                echo ""
 
-                            kubectl get endpoints shopping-service
-                        '''
+                                kubectl get endpoints shopping-service
+                            '''
+                        }
 
                         throw err
                     }
