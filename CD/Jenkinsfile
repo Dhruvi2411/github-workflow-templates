@@ -169,5 +169,48 @@ pipeline {
                 '''
             }
         }
+
+        stage('Switch Traffic and Verify') {
+            steps {
+                script {
+                    def previous = env.ACTIVE_ENV
+                    def target = env.TARGET_ENV
+
+                    try {
+                        sh """
+                            set -e
+
+                            echo "Switching traffic to ${target}..."
+
+                            kubectl patch service shopping-service \
+                            --type=merge \
+                            -p '{"spec":{"selector":{"app":"shopping","environment":"${target}"}}}'
+
+                            echo "Checking Service endpoints..."
+                            kubectl get endpoints shopping-service
+
+                            echo "Testing live application traffic..."
+                            curl -fsS "http://\\$(minikube ip):30080/" -o /dev/null
+
+                            echo "SUCCESS: ${target} is now active!"
+                        """
+                    } catch (err) {
+                        echo "Traffic verification failed. Restoring ${previous}..."
+
+                        sh """
+                            set -e
+
+                            kubectl patch service shopping-service \
+                            --type=merge \
+                            -p '{"spec":{"selector":{"app":"shopping","environment":"${previous}"}}}'
+
+                            kubectl get endpoints shopping-service
+                        """
+
+                        throw err
+                    }
+                }
+            }
+        }
     }
 }   
