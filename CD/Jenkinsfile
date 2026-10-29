@@ -88,30 +88,51 @@ pipeline {
             }
         }
 
+
         stage('Detect Active Environment') {
             steps {
                 script {
-                    env.ACTIVE_ENV = sh(
-                        script: "kubectl get service shopping-service -o jsonpath='{.spec.selector.environment}'",
-                        returnStdout: true
-                    ).trim()
+                    def serviceExists = sh(
+                        script: "kubectl get service shopping-service",
+                        returnStatus: true
+                    )
 
-                    if (env.ACTIVE_ENV == 'blue') {
-                        env.TARGET_ENV = 'green'
-                    } else if (env.ACTIVE_ENV == 'green') {
+                    if (serviceExists != 0) {
+                        echo "First deployment detected!"
+
+                        env.FIRST_DEPLOYMENT = 'true'
+                        env.ACTIVE_ENV = 'none'
                         env.TARGET_ENV = 'blue'
+
                     } else {
-                        error("Unknown active environment: ${env.ACTIVE_ENV}")
+                        echo "Existing deployment detected!"
+
+                        env.FIRST_DEPLOYMENT = 'false'
+
+                        env.ACTIVE_ENV = sh(
+                            script: "kubectl get service shopping-service -o jsonpath='{.spec.selector.environment}'",
+                            returnStdout: true
+                        ).trim()
+
+                        if (env.ACTIVE_ENV == 'blue') {
+                            env.TARGET_ENV = 'green'
+                        } else if (env.ACTIVE_ENV == 'green') {
+                            env.TARGET_ENV = 'blue'
+                        } else {
+                            error("Unknown environment: ${env.ACTIVE_ENV}")
+                        }
                     }
 
                     env.TARGET_DEPLOYMENT = "${env.TARGET_ENV}-deployment"
                     env.TARGET_MANIFEST = "blue-green-k8s/${env.TARGET_ENV}-deployment.yaml"
 
-                    echo "Currently active: ${env.ACTIVE_ENV}"
-                    echo "Next deployment target: ${env.TARGET_ENV}"
+                    echo "First Deployment: ${env.FIRST_DEPLOYMENT}"
+                    echo "Active: ${env.ACTIVE_ENV}"
+                    echo "Target: ${env.TARGET_ENV}"
                 }
             }
         }
+
 
         stage('Deploy and Test Inactive Environment') {
             steps {
@@ -170,13 +191,31 @@ pipeline {
             }
         }
 
+
         stage('Switch Traffic and Verify') {
             steps {
                 script {
                     def previous = env.ACTIVE_ENV
                     def target = env.TARGET_ENV
+                    def firstDeployment = (env.FIRST_DEPLOYMENT == 'true')
 
                     try {
+                        if (firstDeployment) {
+                            echo "First deployment detected!"
+                            echo "Creating Service for ${target}..."
+
+                            sh '''
+                                set -e
+                                kubectl apply -f blue-green-k8s/blue-deployment.yaml
+                                kubectl apply -f blue-green-k8s/green-deployment.yaml
+
+                                kubectl rollout status deployment/blue-deployment --timeout=120s
+                                kubectl rollout status deployment/green-deployment --timeout=120s
+
+                                kubectl apply -f blue-green-k8s/service.yaml
+                            '''
+                        }
+
                         withEnv(["PATCH_ENV=${target}"]) {
                             sh '''
                                 set -e
@@ -192,35 +231,84 @@ pipeline {
                                     -o jsonpath='{.spec.selector}'
                                 echo ""
 
-                                echo "Checking Service endpoints..."
-                                kubectl get endpoints shopping-service
+                                echo "Waiting for ready Service endpoints..."
+
+                                READY=false
+
+                                for i in $(seq 1 15); do
+                                    ADDRESSES=$(kubectl get endpoints shopping-service \
+                                        -o jsonpath='{.subsets[*].addresses[*].ip}')
+
+                                    if [ -n "$ADDRESSES" ]; then
+                                        READY=true
+                                        echo "Ready endpoints: $ADDRESSES"
+                                        break
+                                    fi
+
+                                    echo "Endpoints not ready. Retrying..."
+                                    sleep 2
+                                done
+
+                                if [ "$READY" != "true" ]; then
+                                    echo "ERROR: No ready endpoints found!"
+                                    exit 1
+                                fi
 
                                 echo "Testing live application traffic..."
-                                curl -fsS "http://$(minikube ip):30080/" -o /dev/null
+
+                                HEALTHY=false
+
+                                for i in $(seq 1 10); do
+                                    if curl -fsS \
+                                        --connect-timeout 2 \
+                                        --max-time 5 \
+                                        "http://$(minikube ip):30080/" \
+                                        -o /dev/null; then
+
+                                        HEALTHY=true
+                                        echo "Application is responding!"
+                                        break
+                                    fi
+
+                                    echo "Health check failed. Retrying..."
+                                    sleep 2
+                                done
+
+                                if [ "$HEALTHY" != "true" ]; then
+                                    echo "ERROR: Live traffic verification failed!"
+                                    exit 1
+                                fi
 
                                 echo "SUCCESS: $PATCH_ENV is now active!"
                             '''
                         }
+
                     } catch (err) {
-                        echo "Traffic verification failed. Restoring ${previous}..."
+                        echo "Traffic switching or verification failed!"
 
-                        withEnv(["PATCH_ENV=${previous}"]) {
-                            sh '''
-                                set -e
+                        if (!firstDeployment && previous in ['blue', 'green']) {
+                            echo "Rolling back to ${previous}..."
 
-                                echo "Rolling back to $PATCH_ENV..."
+                            withEnv(["PATCH_ENV=${previous}"]) {
+                                sh '''
+                                    set -e
 
-                                kubectl patch service shopping-service \
-                                    --type=merge \
-                                    -p '{"spec":{"selector":{"app":"shopping","environment":"'"$PATCH_ENV"'"}}}'
+                                    kubectl patch service shopping-service \
+                                        --type=merge \
+                                        -p '{"spec":{"selector":{"app":"shopping","environment":"'"$PATCH_ENV"'"}}}'
 
-                                echo "Checking Service after rollback..."
-                                kubectl get service shopping-service \
-                                    -o jsonpath='{.spec.selector}'
-                                echo ""
+                                    echo "Checking Service after rollback..."
+                                    kubectl get service shopping-service \
+                                        -o jsonpath='{.spec.selector}'
+                                    echo ""
 
-                                kubectl get endpoints shopping-service
-                            '''
+                                    kubectl get endpoints shopping-service
+                                '''
+                            }
+                            echo "Rollback command completed."
+                        } else {
+                            echo "No previous environment to restore."
+                            echo "First deployment requires investigation."
                         }
 
                         throw err
