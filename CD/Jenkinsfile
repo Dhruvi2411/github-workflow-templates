@@ -118,33 +118,54 @@ pipeline {
                 sh '''
                     set -e
 
-                    echo "Deploying to the inactive environment..."
+                    echo "Deploying to inactive environment..."
                     kubectl apply -f "$TARGET_MANIFEST"
 
-                    echo "Waiting for deployment rollout..."
-                    kubectl rollout status "deployment/$TARGET_DEPLOYMENT" \
+                    kubectl rollout status \
+                        "deployment/$TARGET_DEPLOYMENT" \
                         --timeout=120s
 
-                    echo "Checking target Pods..."
-                    kubectl get pods -l "app=shopping,environment=$TARGET_ENV"
+                    echo "Starting port-forward..."
 
-                    echo "Testing the target environment directly..."
-                    kubectl port-forward "deployment/$TARGET_DEPLOYMENT" 18081:80 \
+                    kubectl port-forward \
+                        "deployment/$TARGET_DEPLOYMENT" \
+                        18081:80 \
                         > /tmp/blue-green-port-forward.log 2>&1 &
+
                     PF_PID=$!
+
                     trap 'kill "$PF_PID" 2>/dev/null || true' EXIT
 
+                    HEALTHY=false
+
                     for i in $(seq 1 15); do
-                        if curl -fsS http://127.0.0.1:18081/ -o /dev/null; then
+                        echo "Health check attempt: $i"
+
+                        if curl -fsS \
+                            --connect-timeout 2 \
+                            --max-time 5 \
+                            http://127.0.0.1:18081/ \
+                            -o /dev/null; then
+
+                            HEALTHY=true
                             echo "SUCCESS: Target environment is healthy!"
-                            exit 0
+                            break
                         fi
+
+                        echo "Connection failed. Retrying..."
                         sleep 2
                     done
 
-                    cat /tmp/blue-green-port-forward.log
-                    echo "ERROR: Target environment health check failed!"
-                    exit 1
+                    if [ "$HEALTHY" != "true" ]; then
+                        echo "ERROR: All 15 health checks failed!"
+
+                        echo "Port-forward logs:"
+                        cat /tmp/blue-green-port-forward.log
+
+                        exit 1
+                    fi
+
+                    echo "Health verification completed successfully."
                 '''
             }
         }
