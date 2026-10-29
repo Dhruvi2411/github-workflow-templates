@@ -112,5 +112,41 @@ pipeline {
                 }
             }
         }
+
+        stage('Deploy and Test Inactive Environment') {
+            steps {
+                sh '''
+                    set -e
+
+                    echo "Deploying to the inactive environment..."
+                    kubectl apply -f "$TARGET_MANIFEST"
+
+                    echo "Waiting for deployment rollout..."
+                    kubectl rollout status "deployment/$TARGET_DEPLOYMENT" \
+                        --timeout=120s
+
+                    echo "Checking target Pods..."
+                    kubectl get pods -l "app=shopping,environment=$TARGET_ENV"
+
+                    echo "Testing the target environment directly..."
+                    kubectl port-forward "deployment/$TARGET_DEPLOYMENT" 18081:80 \
+                        > /tmp/blue-green-port-forward.log 2>&1 &
+                    PF_PID=$!
+                    trap 'kill "$PF_PID" 2>/dev/null || true' EXIT
+
+                    for i in $(seq 1 15); do
+                        if curl -fsS http://127.0.0.1:18081/ -o /dev/null; then
+                            echo "SUCCESS: Target environment is healthy!"
+                            exit 0
+                        fi
+                        sleep 2
+                    done
+
+                    cat /tmp/blue-green-port-forward.log
+                    echo "ERROR: Target environment health check failed!"
+                    exit 1
+                '''
+            }
+        }
     }
 }   
