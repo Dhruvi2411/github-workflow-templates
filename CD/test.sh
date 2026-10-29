@@ -1,20 +1,25 @@
-HEALTHY=False
-for i in $(seq 1 15); do
-    echo "Health check attempt: $i"
+set -e
 
-    if curl -fsS \
-        --connect-timeout 2 \
-        --max-time 5 \
-        http://127.0.0.1:18081/ \
-        -o /dev/null; then
+echo "Checking Minikube status..."
 
-        HEALTHY=true
-        echo "SUCCESS: Target environment is healthy!"
-        break
-    fi
+if ! minikube status; then
+    echo "Minikube is not running. Starting Minikube..."
+    minikube start --driver=docker
+fi
 
-    echo "Connection failed. Retrying..."
-    sleep 2
-done
+echo "Updating Kubernetes context..."
+minikube update-context
 
-echo $HEALTHY
+echo "Setting Kubernetes context..."
+kubectl config use-context minikube
+
+echo "Checking Kubernetes connectivity..."
+kubectl cluster-info
+
+echo "Checking Kubernetes nodes..."
+kubectl get nodes --all-namespaces
+
+echo "Waiting for Kubernetes nodes to be Ready..."
+kubectl wait --for=condition=Ready nodes --all --timeout=120s
+
+echo "Minikube cluster is ready!"
